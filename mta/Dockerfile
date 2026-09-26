@@ -1,19 +1,31 @@
 ##  vndel — Multi Theft Auto server image (linux/amd64)
 ##  Everything is installed at BUILD time from pinned sources; nothing is downloaded when a server starts.
-FROM    ubuntu:22.04
+##  The base image is pinned by digest (ubuntu:22.04). Update it on purpose: docker buildx imagetools inspect ubuntu:22.04
+FROM    ubuntu:22.04@sha256:b8b6ee6aa931ecd9d0d952abc34dc0e5f7c6a30c6bb71b079fe399fde0329c02
 
-LABEL   author="vndel" org.opencontainers.image.title="vndel MTA yolk"
+ARG     BUILD_DATE=unknown
+ARG     VCS_REF=unknown
+LABEL   author="vndel" \
+        org.opencontainers.image.title="vndel MTA yolk" \
+        org.opencontainers.image.created="${BUILD_DATE}" \
+        org.opencontainers.image.revision="${VCS_REF}"
 
 ENV     DEBIAN_FRONTEND=noninteractive
 
-##      System packages (same runtime libraries as the previous image; compilers, gdb and systemd were dropped)
+##      A failing command anywhere in a piped RUN fails the build
+SHELL   ["/bin/bash", "-o", "pipefail", "-c"]
+
+##      System packages (same runtime libraries as the previous image; compilers, gdb and systemd were dropped).
+##      tzdata lets a server use its own timezone through the TZ variable.
+##      Package versions are deliberately not pinned (Ubuntu removes old versions, which would break every rebuild).
+# hadolint ignore=DL3008
 RUN     apt-get update -y \
         && apt-get upgrade -y \
         && apt-get install -y --no-install-recommends \
             ca-certificates libgcc1 libc6 git wget curl tar zip unzip binutils xz-utils liblzo2-2 iproute2 net-tools netcat \
             libatomic1 libsdl1.2debian libsdl2-2.0-0 libfontconfig libunwind8 sqlite3 libsqlite3-dev libmariadb-dev libzip4 \
             locales ffmpeg libcurl3-gnutls liblua5.1-0 libluajit-5.1-2 libsqlite3-0 bzip2 zlib1g libevent-dev \
-            libncursesw5 libzstd1 libzstd-dev \
+            libncursesw5 libzstd1 libzstd-dev tzdata \
         && rm -rf /var/lib/apt/lists/*
 
 ##      MTA's MySQL module. The download is checked against a pinned SHA-256: if MTA ever changes the file,
