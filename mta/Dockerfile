@@ -22,6 +22,14 @@ ARG     LIBMYSQLCLIENT_SHA256=bb85d6b492e9cadb70a988c9025e92409614d1cbaf03a3ad9b
 RUN     curl -fsSL -o /usr/lib/libmysqlclient.so.16 https://nightly.mtasa.com/files/modules/64/libmysqlclient.so.16 \
         && echo "${LIBMYSQLCLIENT_SHA256}  /usr/lib/libmysqlclient.so.16" | sha256sum -c -
 
+##      OpenSSL 1.1: MTA's MySQL module (x64/dbconmy.so) is linked against libssl.so.1.1, which Ubuntu 22.04 no longer ships
+##      (it only has OpenSSL 3). Taken from Ubuntu's own security archive and checked against a pinned SHA-256.
+ARG     LIBSSL11_SHA256=7cf39d70a639017d1dd7c8d36daa2258063608688e449fddf40ffdd46f992a78
+RUN     curl -fsSL -o /tmp/libssl1.1.deb http://security.ubuntu.com/ubuntu/pool/main/o/openssl/libssl1.1_1.1.1f-1ubuntu2.24_amd64.deb \
+        && echo "${LIBSSL11_SHA256}  /tmp/libssl1.1.deb" | sha256sum -c - \
+        && dpkg -i /tmp/libssl1.1.deb \
+        && rm -f /tmp/libssl1.1.deb
+
 RUN     useradd -m -d /home/container -s /bin/bash container
 
 ENV     USER=container HOME=/home/container
