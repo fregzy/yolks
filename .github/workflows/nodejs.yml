@@ -160,12 +160,16 @@ jobs:
 
           if [ "$V" -ge 16 ]; then
             echo "--- @discordjs/opus (music bots): no prebuilt binary for this glibc, so it is compiled — GCC 14 needs -fpermissive"
+            # 0.10 needs node-addon-api 8, which supports Node 18+ only; bots on Node 16/17 use 0.9
+            if [ "$V" -ge 18 ]; then OPUS=latest; else OPUS=0.9.0; fi
             D="$(new)"
-            printf '%s\n' '{"dependencies":{"@discordjs/opus":"latest"}}' > "$D/package.json"
+            printf '{"dependencies":{"@discordjs/opus":"%s"}}\n' "$OPUS" > "$D/package.json"
             printf '%s\n' 'const { OpusEncoder } = require("@discordjs/opus"); const e = new OpusEncoder(48000, 2); console.log("OPUS-OK", e.encode(Buffer.alloc(3840)).length > 0)' > "$D/index.js"
             # compiled from source on purpose (a prebuilt binary, when one exists, would not test the compiler)
             OUT="$(run "$D" -e COMMAND=index.js -e npm_config_build_from_source=true "$IMG" 2>&1 || true)"; echo "$OUT" | tail -5
-            echo "$OUT" | grep -q "OPUS-OK true"
+            if ! echo "$OUT" | grep -q "OPUS-OK true"; then
+              echo "--- the compiler's errors:"; echo "$OUT" | grep -E "error:|Error:|ERR!" | head -30; exit 1
+            fi
           fi
 
           echo "--- the panel's stop (Ctrl+C = SIGINT) reaches node"
