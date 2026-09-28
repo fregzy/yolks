@@ -218,9 +218,19 @@ not_called "not a git folder: no pull" "git"
 echo "memory"
 files index.js "${APP}"
 run COMMAND=index.js SERVER_MEMORY=1024
-has "1024 MB server: node's heap limited to 768 MB" "opts=--max-old-space-size=768"
+# Node 12 does not accept --max-semi-space-size in NODE_OPTIONS (it would not even start): then it is left out
+if NODE_OPTIONS="--max-semi-space-size=16" "${REAL_NODE}" -e 0 >/dev/null 2>&1; then SEMI=' --max-semi-space-size=16'; else SEMI=''; fi
+has "1024 MB server: node's heap limited to 768 MB, young generation to 16 MB semi-spaces where node allows it (Node 24+ would add 192 MB)" "opts=--max-old-space-size=768${SEMI} "
+has "…and the app runs with it" "APP-RAN"
 run COMMAND=index.js SERVER_MEMORY=1024 NODE_OPTIONS='--trace-warnings'
-has "existing NODE_OPTIONS are kept" "opts=--trace-warnings --max-old-space-size=768"
+has "existing NODE_OPTIONS are kept" "opts=--trace-warnings --max-old-space-size=768${SEMI} "
+run COMMAND=index.js SERVER_MEMORY=4096
+has "a big server (over 2 GB): only the old generation is limited" "opts=--max-old-space-size=3072 "
+hasnt "…its young generation is left to Node" "max-semi-space-size"
+if [ -n "${SEMI}" ]; then
+    run COMMAND=index.js SERVER_MEMORY=1024 NODE_OPTIONS='--max-semi-space-size=64'
+    has "a semi-space size the customer set wins" "opts=--max-semi-space-size=64 --max-old-space-size=768 "
+fi
 run COMMAND=index.js SERVER_MEMORY=1024 NODE_OPTIONS='--max-old-space-size=300'
 has "a limit the customer set wins" "opts=--max-old-space-size=300 "
 run COMMAND=index.js SERVER_MEMORY=0

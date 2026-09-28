@@ -87,6 +87,13 @@ if [ "${INSTALLED}" = 1 ] && [ -f package.json ] && [ -d node_modules ]; then fi
 if on "${NODE_MEMORY_AUTO:-1}" && [[ "${SERVER_MEMORY:-0}" =~ ^[0-9]+$ ]] && [ "${SERVER_MEMORY:-0}" -ge 128 ] \
     && [[ "${NODE_OPTIONS:-}" != *max-old-space-size* ]] && [[ "${NODE_ARGS:-}" != *max-old-space-size* ]]; then
     export NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--max-old-space-size=$((SERVER_MEMORY * 75 / 100))"
+    # Node 24+ gives the young generation up to 3 × 64 MB on top of that — on a small server the total would pass
+    # the server's memory. Up to 2 GB it keeps the 16 MB semi-space older Node versions use. (Only where node accepts
+    # it in NODE_OPTIONS — Node 12 refuses to start with it there.)
+    if [ "${SERVER_MEMORY}" -le 2048 ] && [[ "${NODE_OPTIONS}" != *max-semi-space-size* ]] && [[ "${NODE_ARGS:-}" != *max-semi-space-size* ]] \
+        && NODE_OPTIONS="--max-semi-space-size=16" node -e 0 >/dev/null 2>&1; then
+        export NODE_OPTIONS="${NODE_OPTIONS} --max-semi-space-size=16"
+    fi
 fi
 on "${TS_TYPECHECK:-0}" || export TS_NODE_TRANSPILE_ONLY=true
 
