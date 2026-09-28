@@ -8,6 +8,23 @@ export INTERNAL_IP
 SERVER_DIR="${SERVER_DIR:-/home/container}"
 cd "${SERVER_DIR}" || exit 1
 
+# ── A name for the uid ──────────────────────────────────────────────────────────────────────────────
+# Wings runs the container as its own uid, which /etc/passwd does not list: then os.userInfo() and whoami fail
+# (tsx and other tools stop on it). nss_wrapper answers for that uid from files in /tmp instead — /etc/passwd itself
+# stays read-only (a writable one would let anyone add a root user).
+NSS_LIB="${NSS_WRAPPER_LIB:-/usr/lib/x86_64-linux-gnu/libnss_wrapper.so}"
+if ! whoami >/dev/null 2>&1 && [ -f "${NSS_LIB}" ]; then
+    # only when every file was written: a half-made passwd file would be worse than none
+    if NSS_DIR="$(mktemp -d 2>/dev/null)" \
+        && cp /etc/passwd "${NSS_DIR}/passwd" \
+        && printf 'container:x:%s:%s:container:%s:/bin/bash\n' "$(id -u)" "$(id -g)" "${HOME:-/home/container}" >> "${NSS_DIR}/passwd" \
+        && cp /etc/group "${NSS_DIR}/group" \
+        && { getent group "$(id -g)" >/dev/null 2>&1 || printf 'container:x:%s:\n' "$(id -g)" >> "${NSS_DIR}/group"; }; then
+        export NSS_WRAPPER_PASSWD="${NSS_DIR}/passwd" NSS_WRAPPER_GROUP="${NSS_DIR}/group"
+        export LD_PRELOAD="${NSS_LIB}${LD_PRELOAD:+ ${LD_PRELOAD}}"
+    fi
+fi
+
 # ── Notice ──────────────────────────────────────────────────────────────────────────────────────────
 # Shown at the top of the console on every start. Change the text below, or override it per egg with an
 # egg variable named VNDEL_NOTICE; set VNDEL_NOTICE to an empty value to show nothing.

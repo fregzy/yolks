@@ -239,6 +239,20 @@ OUT=$(cd "${SRV}" && env -i PATH="${BIN}:/usr/bin:/bin" SERVER_DIR="${SRV}" STAR
 OUT=$(cd "${SRV}" && env -i PATH="${BIN}:/usr/bin:/bin" SERVER_DIR="${SRV}" STARTUP='echo x-{{FOO}} && echo second' FOO=bar bash "${ENTRYPOINT}" 2>&1)
 case "${OUT}" in *x-bar*second*) ok "{{VAR}} and && work (old eggs' startup lines keep working)" ;; *) bad "{{VAR}} and &&" "${OUT}" ;; esac
 
+# a uid the image does not know (as Wings runs it): whoami fails -> nss_wrapper files with a "container" name.
+# Linux only: glibc just warns about the stand-in library (Windows' Git Bash stops on it, and has no /etc/passwd).
+if [ "$(uname -s)" = Linux ]; then
+stub whoami 'exit 1'
+: > "${WORK}/libnss_fake.so"
+OUT=$(cd "${SRV}" && env -i PATH="${BIN}:/usr/bin:/bin" SERVER_DIR="${SRV}" HOME=/home/container NSS_WRAPPER_LIB="${WORK}/libnss_fake.so" STARTUP='echo "LP=${LD_PRELOAD}"; tail -n1 "${NSS_WRAPPER_PASSWD}"; test -f "${NSS_WRAPPER_GROUP}" && echo GROUP-FILE' bash "${ENTRYPOINT}" 2>&1)
+case "${OUT}" in *"LP=${WORK}/libnss_fake.so"*) ok "an unknown uid: nss_wrapper is preloaded" ;; *) bad "an unknown uid: nss_wrapper is preloaded" "${OUT}" ;; esac
+case "${OUT}" in *"container:x:$(id -u):$(id -g):container:/home/container:/bin/bash"*) ok "…and that uid is \"container\" with the server folder as home" ;; *) bad "passwd entry" "${OUT}" ;; esac
+case "${OUT}" in *GROUP-FILE*) ok "…with a group file too" ;; *) bad "group file" "${OUT}" ;; esac
+stub whoami 'echo container'
+OUT=$(cd "${SRV}" && env -i PATH="${BIN}:/usr/bin:/bin" SERVER_DIR="${SRV}" NSS_WRAPPER_LIB="${WORK}/libnss_fake.so" STARTUP='echo "LP=[${LD_PRELOAD:-}]"' bash "${ENTRYPOINT}" 2>&1)
+case "${OUT}" in *"LP=[]"*) ok "a known uid: nothing is preloaded" ;; *) bad "known uid" "${OUT}" ;; esac
+fi
+
 echo
 echo "${pass} passed, ${fail} failed"
 [ "${fail}" = 0 ]

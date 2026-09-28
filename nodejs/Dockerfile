@@ -47,6 +47,9 @@ LABEL   author="vndel" \
 ENV     DEBIAN_FRONTEND=noninteractive LANG=C.UTF-8 LC_ALL=C.UTF-8
 SHELL   ["/bin/bash", "-o", "pipefail", "-c"]
 
+##      python3-setuptools: the node-gyp that comes with older npm versions imports "distutils", which Python 3.12+
+##      no longer has — setuptools puts it back. libnss-wrapper: Wings runs the container as a uid the image does not
+##      know; the entrypoint gives that uid a name (os.userInfo(), whoami) without making /etc/passwd writable.
 ##      Tools apps expect, build tools for native modules (node-gyp: python3, make, g++; canvas: cairo / pango /
 ##      jpeg / gif / svg headers), Chromium with fonts (Arabic and emoji included), ffmpeg (music / media bots),
 ##      tini (so node gets the panel's stop signal), tzdata (the TZ variable).
@@ -56,7 +59,7 @@ RUN     apt-get update -y \
         && apt-get upgrade -y \
         && apt-get install -y --no-install-recommends \
             ca-certificates curl wget git openssh-client tar zip unzip xz-utils bzip2 jq sqlite3 iproute2 procps tzdata tini \
-            build-essential python3 python-is-python3 pkg-config \
+            build-essential python3 python-is-python3 python3-setuptools pkg-config libnss-wrapper \
             libcairo2-dev libpango1.0-dev libjpeg-dev libgif-dev librsvg2-dev libpixman-1-dev \
             chromium fonts-liberation fonts-dejavu-core fonts-noto-core fonts-noto-color-emoji \
             ffmpeg \
