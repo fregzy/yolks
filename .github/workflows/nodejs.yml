@@ -82,6 +82,11 @@ jobs:
           docker run --rm --entrypoint bash "$IMG" -c "node -v | grep -q '^v${V}\.' && npm -v && yarn -v && pnpm -v && tsc -v | grep -q 'Version 5\.' && ts-node -v && git --version && ffmpeg -version | head -1 && python3 --version && g++ --version | head -1 && chromium --version && jq --version && test -x /usr/bin/tini"
           if [ "$V" -ge 16 ]; then docker run --rm --entrypoint tsx "$IMG" --version; fi
 
+          echo "--- the uid Wings runs as (unknown to the image) gets a name: os.userInfo() and whoami work"
+          D="$(new)"
+          OUT="$(run "$D" -e STARTUP='whoami && node -e "console.log(\"USER-\" + require(\"os\").userInfo().username)"' "$IMG")"; echo "$OUT"
+          echo "$OUT" | grep -q "USER-container"
+
           echo "--- a .js app, its dependencies installed from package.json (then skipped the next time)"
           D="$(new)"
           printf '%s\n' '{"dependencies":{"ms":"2.1.3"}}' > "$D/package.json"
@@ -125,6 +130,12 @@ jobs:
           OUT="$(docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp --entrypoint chromium "$IMG" --headless=new --dump-dom 'data:text/html,<p>CHROME-OK</p>' 2>/dev/null)"
           echo "$OUT" | grep -q "CHROME-OK"
 
+          echo "--- …and started from an app's environment (the entrypoint's user-name preload must not reach Chrome)"
+          D="$(new)"
+          OUT="$(timeout 90 docker run --rm --user "$(id -u):$(id -g)" -v "$D:/home/container" -e HOME=/home/container \
+            -e STARTUP="chromium --headless=new --dump-dom 'data:text/html,<p>CHROME-ENV-OK</p>'" "$IMG" 2>/dev/null || true)"
+          echo "$OUT" | grep -q "CHROME-ENV-OK"
+
           if [ "$V" -ge 18 ]; then
             echo "--- puppeteer uses the image's Chrome by itself"
             # puppeteer-core's newest release needs Node 22.12; 22.x supports Node 18
@@ -136,13 +147,15 @@ jobs:
             echo "$OUT" | grep -q "PPTR-OK"
           fi
 
-          if [ "$V" -ge 16 ]; then
-            echo "--- a native module is compiled (node-gyp: python3, make, g++)"
-            D="$(new)"
-            printf '%s\n' '{"dependencies":{"bcrypt":"5.1.1"}}' > "$D/package.json"
-            printf '%s\n' 'const b = require("bcrypt"); console.log("NATIVE-OK", b.compareSync("x", b.hashSync("x", 4)))' > "$D/index.js"
-            OUT="$(run "$D" -e COMMAND=index.js -e npm_config_build_from_source=true "$IMG")"; echo "$OUT" | tail -5
-            echo "$OUT" | grep -q "NATIVE-OK true"
+          echo "--- a native module is compiled (node-gyp: python3, make, g++)"
+          D="$(new)"
+          printf '%s\n' '{"dependencies":{"bcrypt":"5.1.1"}}' > "$D/package.json"
+          printf '%s\n' 'const b = require("bcrypt"); console.log("NATIVE-OK", b.compareSync("x", b.hashSync("x", 4)))' > "$D/index.js"
+          OUT="$(run "$D" -e COMMAND=index.js -e npm_config_build_from_source=true "$IMG" 2>&1 || true)"; echo "$OUT" | tail -8
+          if ! echo "$OUT" | grep -q "NATIVE-OK true"; then
+            # Node 12-15 come with a node-gyp from before Python 3.12: reported, but it does not hold their image back
+            if [ "$V" -ge 16 ]; then echo "native module build failed"; exit 1; fi
+            echo "::warning::Node ${V}: compiling a native module from source failed (old node-gyp) — prebuilt modules still work"
           fi
 
           echo "--- the panel's stop (Ctrl+C = SIGINT) reaches node"
