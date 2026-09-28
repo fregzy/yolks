@@ -1,8 +1,34 @@
 # vndel yolks
 
-Game server images for the vndel Pelican panel. Currently: `mta` (Multi Theft Auto, linux/amd64).
+Server images for the vndel Pelican panel (linux/amd64):
 
-    ghcr.io/<your-github-user>/yolks:mta
+    ghcr.io/<your-github-user>/yolks:mta          Multi Theft Auto
+    ghcr.io/<your-github-user>/yolks:nodejs_12 … nodejs_26   any Node.js app (one image per Node major)
+
+## Node.js (`nodejs/`)
+One image per Node major, 12 to 26 — each the newest release of that major, its signature checked against the
+Node.js release keys at build time. Rebuilt every Monday (Node security releases + Debian updates).
+
+| Included | |
+|---|---|
+| Run | `vndel-node`: a `.js` / `.mjs` / `.cjs` file with node, a `.ts` file with **ts-node** (or **tsx**), any command (`npm run start`), or — with nothing set — package.json's `start` script / `main` / `index.js`, `index.ts`, `src/index.ts`, … |
+| Packages | **npm**, **yarn**, **pnpm** (the lock file decides); installed on start only when package.json or the lock file changed; **autodeps** installs what the code `require`s / `import`s even without a package.json |
+| TypeScript | TypeScript 5, ts-node 10 (type errors do not stop the app unless `TS_TYPECHECK=1`), tsx (Node 16+; used by itself for ES-module projects) |
+| Chrome | Chromium with Arabic, emoji and Latin fonts. `PUPPETEER_EXECUTABLE_PATH` is set and `--no-sandbox --disable-dev-shm-usage` are added for every app, so puppeteer / whatsapp-web.js work without code changes; `google-chrome`, `google-chrome-stable`, `chromium-browser` all lead to it |
+| Native modules | python3, make, g++ (node-gyp: bcrypt, sqlite3, …), cairo / pango / jpeg / gif / svg headers (canvas) |
+| Also | ffmpeg, git, openssh-client, curl, wget, jq, sqlite3, zip / unzip, tzdata |
+| Memory | node's heap is limited to 75% of the server's memory (it is not killed for running out; `NODE_MEMORY_AUTO=0` to turn off) |
+| Stop | tini passes the panel's Ctrl+C to node, so apps can save and close cleanly |
+
+Egg: `eggs/egg-vndel-nodejs.json` (build it with `php eggs/vndel-nodejs/build.php <github-user>`). Its startup is
+just `vndel-node`; the variables do the rest (start file or command, packages, auto update from git, TypeScript runner).
+Old eggs keep working with these images: their startup line runs as it is (`/usr/local/bin/node`, `npm` are where
+they expect them).
+
+Tests: `bash tests/nodejs_test.sh` (no Docker: vndel-node with a real node and stub package managers). The workflow
+`.github/workflows/nodejs.yml` builds every major and, before pushing it, runs the real image: JS app + npm install,
+ts-node, tsx (ESM), autodeps, heap limit, Chrome, puppeteer, a native module compiled from source, the stop signal,
+an old egg's startup line.
 
 ## Layout
 
