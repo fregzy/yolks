@@ -6,6 +6,11 @@
 // node_modules yet. If there is no package.json it creates a minimal one first, so what gets installed is recorded
 // there and the next start is fast (the egg's own `npm install` then takes over).
 //
+// It stays out of real projects: when the customer's own package.json lists dependencies, npm installs those and
+// autodeps does nothing (a bot's optional or leftover require()s — an old fallback in a try/catch, a file that is
+// never run — would otherwise be installed on every start, some of them never succeeding). A package.json that
+// autodeps made itself carries "autodeps": true and keeps being looked after.
+//
 // Written for Node 12+ (the oldest image the egg offers): no ?. / ?? / other newer syntax. Never stops the server
 // from starting: every failure is reported and the start carries on.
 'use strict';
@@ -22,6 +27,7 @@ var MAX_DEPTH = 10;
 var SKIP_DIRS = { node_modules: 1, '.git': 1, '.npm': 1, '.cache': 1, '.local': 1, '.config': 1, '.pm2': 1 };
 var CODE_FILE = /\.(c|m)?(j|t)sx?$/i;
 var NPM_NAME = /^(@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*$/;
+var MAX_ONE_BY_ONE = 8; // after the whole list failed: at most this many are tried alone (each is a full npm run)
 
 function log(message) {
     process.stdout.write('[autodeps] ' + message + '\n');
@@ -154,10 +160,18 @@ function main() {
     var ownName = null;
     var pkgFile = path.join(ROOT, 'package.json');
     if (fs.existsSync(pkgFile)) {
+        var pkg;
         try {
-            ownName = JSON.parse(fs.readFileSync(pkgFile, 'utf8')).name || null;
+            pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8')) || {};
         } catch (e) {
             log('package.json is not valid JSON — leaving it alone, nothing installed');
+
+            return;
+        }
+        ownName = pkg.name || null;
+        var listed = Object.keys(pkg.dependencies || {}).length + Object.keys(pkg.devDependencies || {}).length;
+        if (listed > 0 && pkg.autodeps !== true) {
+            log('skipped: package.json lists the dependencies (npm installs those). A missing one: add it to package.json or to "Additional Node packages".');
 
             return;
         }
@@ -192,7 +206,7 @@ function main() {
     }
 
     if (!fs.existsSync(pkgFile)) {
-        fs.writeFileSync(pkgFile, JSON.stringify({ name: 'server', version: '1.0.0', private: true }, null, 2) + '\n');
+        fs.writeFileSync(pkgFile, JSON.stringify({ name: 'server', version: '1.0.0', private: true, autodeps: true }, null, 2) + '\n');
         log('no package.json — created one, so what is installed now is remembered');
     }
 
@@ -202,13 +216,19 @@ function main() {
         return;
     }
 
-    // One bad name (a typo, a private package) makes npm refuse the whole list: try them one by one instead
-    log('installing them together failed — trying one by one');
-    var failed = missing.filter(function (name) {
-        return !npm(base.concat([name]));
+    // One bad name (a typo, a private package) makes npm refuse the whole list: try them one by one instead —
+    // quietly (npm's warnings were already shown once) and only a few, so a long list cannot hold the start up
+    var alone = missing.slice(0, MAX_ONE_BY_ONE);
+    var untried = missing.slice(MAX_ONE_BY_ONE);
+    log('installing them together failed — trying ' + (untried.length > 0 ? 'the first ' + alone.length : 'them') + ' one by one');
+    var failed = alone.filter(function (name) {
+        return !npm(base.concat(['--loglevel=error', name]));
     });
     if (failed.length > 0) {
         log('could not install: ' + failed.join(' ') + ' (check the name, or add it to "Additional Node packages")');
+    }
+    if (untried.length > 0) {
+        log('not tried: ' + untried.join(' ') + ' — add the ones the app needs to package.json or "Additional Node packages"');
     }
 }
 
