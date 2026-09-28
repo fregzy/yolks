@@ -122,6 +122,12 @@ run_file() {
             if [ "${esm}" = 1 ]; then
                 exec node "${NODE_FLAGS[@]}" --loader "file://${tsnode}/esm.mjs" "${file}" "$@"
             fi
+            # No tsconfig: ts-node's built-in one for Node 16+ pairs module "node16" with an old module resolution,
+            # which TypeScript 5 refuses (TS5109) — give it plain CommonJS settings instead. A project's own
+            # tsconfig.json (next to the file or in the server folder) is always used as it is.
+            if [ ! -f tsconfig.json ] && [ ! -f "$(dirname "${file}")/tsconfig.json" ] && [ -z "${TS_NODE_COMPILER_OPTIONS:-}" ]; then
+                export TS_NODE_COMPILER_OPTIONS='{"module":"commonjs","moduleResolution":"node","esModuleInterop":true}'
+            fi
             exec node "${NODE_FLAGS[@]}" -r "${tsnode}/register" "${file}" "$@"
             ;;
         *)

@@ -121,6 +121,37 @@ rm -f "${BIN}/tsx"
 run COMMAND=index.ts INSTALL_DEPS=0
 called "…without tsx: ts-node's ESM loader" "--loader file://${GLOBAL}/ts-node/esm.mjs index.ts"
 stub tsx "echo \"tsx \$*\" >> '${CALLS}'; echo TSX-RAN"
+files index.ts 'console.log("CO=" + (process.env.TS_NODE_COMPILER_OPTIONS || "unset"))'
+run COMMAND=index.ts
+has "no tsconfig: plain CommonJS settings for ts-node (its Node 16+ default fails with TS5109)" 'CO={"module":"commonjs"'
+files index.ts 'console.log("CO=" + (process.env.TS_NODE_COMPILER_OPTIONS || "unset"))' tsconfig.json '{}'
+run COMMAND=index.ts
+has "the project's own tsconfig.json is left to decide" "CO=unset"
+files src/index.ts 'console.log("CO=" + (process.env.TS_NODE_COMPILER_OPTIONS || "unset"))' src/tsconfig.json '{}'
+run COMMAND=src/index.ts
+has "…also a tsconfig.json next to the file" "CO=unset"
+
+# The real ts-node + TypeScript 5 (as in the image), when given: VNDEL_REAL_GLOBAL=<a node_modules with both>
+if [ -n "${VNDEL_REAL_GLOBAL:-}" ]; then
+    echo "TypeScript — the real ts-node"
+    realrun() { : > "${CALLS}"; OUT=$(cd "${SRV}" && env -i PATH="${BIN}:/usr/bin:/bin" HOME="${WORK}" SERVER_DIR="${SRV}" VNDEL_GLOBAL_MODULES="${VNDEL_REAL_GLOBAL}" INSTALL_DEPS=0 "$@" bash "${VNDEL_NODE}" 2>&1); RC=$?; }
+    files index.ts 'const n: number = 41; interface A { x: string } const a: A = { x: "TS-OK" }; console.log(a.x, n + 1)'
+    realrun COMMAND=index.ts
+    has "typed code, no tsconfig: runs (this failed on Node 16+ before)" "TS-OK 42"
+    files index.ts 'import * as path from "path"; const n: number = "not a number" as any; console.log("TYPED", path.basename("/a/b.ts"), n)'
+    realrun COMMAND=index.ts
+    has "imports work" "TYPED b.ts not a number"
+    files index.ts 'const n: number = "x"; console.log("SHOULD-NOT-RUN", n)'
+    realrun COMMAND=index.ts
+    has "a type error does not stop the app by default" "SHOULD-NOT-RUN"
+    realrun COMMAND=index.ts TS_TYPECHECK=1
+    has "TS_TYPECHECK=1: the type error is reported" "TS2322"
+    hasnt "…and the app does not run" "SHOULD-NOT-RUN"
+    files index.ts 'export const x: number = 1; console.log("NODENEXT-OK", x)' tsconfig.json '{"compilerOptions":{"module":"nodenext"}}'
+    realrun COMMAND=index.ts
+    has "a project tsconfig with module nodenext works as the project wrote it" "NODENEXT-OK 1"
+fi
+
 files index.ts "${APP}" node_modules/ts-node/register.js 'console.log("LOCAL-TSNODE"); require.extensions[".ts"] = require.extensions[".js"];'
 run COMMAND=index.ts
 has "the project's own ts-node wins over the image's" "LOCAL-TSNODE"
