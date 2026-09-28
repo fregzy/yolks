@@ -26,6 +26,13 @@ for pm in npm yarn pnpm; do
     stub "${pm}" "echo \"${pm} \$*\" >> '${CALLS}'
 case \"\$1\" in -v|--version) echo 9.9.9; exit 0;; esac
 [ \"\${NPM_FAIL:-0}\" = 1 ] && { echo '${pm}: failing on purpose'; exit 1; }
+# PEER_LOOP=1: npm's endless peer-dependency loop, until it is run with legacy peer deps; PEER_FEW=1: a few warnings
+if [ \"\${PEER_LOOP:-0}\" = 1 ] && [ \"\$1\" = install ] && [ -z \"\${npm_config_legacy_peer_deps:-}\" ]; then
+    echo \"${pm} looping\" >> '${CALLS}'
+    while :; do echo 'npm warn ERESOLVE overriding peer dependency'; sleep 0.02; done
+fi
+if [ \"\${PEER_FEW:-0}\" = 1 ] && [ \"\$1\" = install ]; then for i in 1 2 3 4 5; do echo 'npm warn ERESOLVE overriding peer dependency'; done; fi
+[ -n \"\${npm_config_legacy_peer_deps:-}\" ] && echo \"${pm} legacy-peer-deps \$*\" >> '${CALLS}'
 [ \"\$1\" = install ] && mkdir -p node_modules
 [ \"\$1\" = start ] && echo NPM-START-RAN
 exit 0"
@@ -36,7 +43,7 @@ stub ip 'echo "1.0.0.0 via 10.0.0.1 dev eth0 src 10.0.0.5 uid 0"'
 # ts-node stand-in: -r …/register makes .ts files load like .js and says so
 printf 'console.log("TSNODE-REGISTER transpileOnly=" + process.env.TS_NODE_TRANSPILE_ONLY); require.extensions[".ts"] = require.extensions[".js"];\n' > "${GLOBAL}/ts-node/register.js"
 printf 'export {};\n' > "${GLOBAL}/ts-node/esm.mjs"
-printf 'console.log("AUTODEPS-RAN");\n' > "${WORK}/autodeps.js"
+printf 'console.log("AUTODEPS-RAN legacy=" + (process.env.npm_config_legacy_peer_deps || "no"));\n' > "${WORK}/autodeps.js"
 
 pass=0
 fail=0
@@ -200,6 +207,28 @@ run COMMAND=index.js AUTO_DEPS=1
 has "AUTO_DEPS=1 runs autodeps" "AUTODEPS-RAN"
 run COMMAND=index.js
 hasnt "AUTO_DEPS off: it does not" "AUTODEPS-RAN"
+
+echo "npm going round in circles on peer dependencies"
+files package.json '{"dependencies":{"react":"*"}}' index.js "${APP}"
+T0=$(date +%s)
+run COMMAND=index.js AUTO_DEPS=1 PEER_LOOP=1
+T1=$(date +%s)
+called "the endless install is noticed…" "npm looping"
+[ $((T1 - T0)) -lt 30 ] && ok "…and stopped within seconds ($((T1 - T0)) s), not left running" || bad "the looping npm was not stopped in time ($((T1 - T0)) s)"
+called "…installed again with legacy peer deps (as npm 6 did)" "npm legacy-peer-deps install --no-audit --no-fund --loglevel=error"
+has "…and it says so" "installing again the way npm 6 did"
+has "…the app starts" "APP-RAN"
+has "…autodeps runs with legacy peer deps too (it would loop the same way)" "AUTODEPS-RAN legacy=true"
+case "$(grep -c 'ERESOLVE overriding' <<<"${OUT}")" in [0-9] | [1-5][0-9]) ok "…the console is not flooded (at most ~40 warnings)" ;; *) bad "too many warnings printed" "$(grep -c 'ERESOLVE overriding' <<<"${OUT}")" ;; esac
+run COMMAND=index.js
+has "the next start: nothing to install" "dependencies are up to date"
+files package.json '{"dependencies":{"react":"*"}}' index.js "${APP}"
+run COMMAND=index.js PEER_FEW=1
+not_called "a few peer warnings (a normal install): no second install" "legacy-peer-deps"
+has "…the app starts" "APP-RAN"
+files index.js "${APP}"
+run COMMAND=index.js NODE_PACKAGES='react-dom' PEER_LOOP=1
+called "NODE_PACKAGES that loop: installed again with legacy peer deps" "npm legacy-peer-deps install --no-audit --no-fund --loglevel=error react-dom"
 
 echo "git"
 files index.js "${APP}"

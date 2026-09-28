@@ -45,15 +45,57 @@ if on "${AUTO_UPDATE:-0}" && [ -d .git ]; then
 fi
 
 # ── 2 · packages ──────────────────────────────────────────────────────────────────────────────────
+# npm 7+ can go round in circles on conflicting peer dependencies (e.g. "react": "*" next to a package that wants
+# React 18), printing "ERESOLVE overriding peer dependency" over and over and never finishing. When that warning
+# keeps coming, npm is stopped and run again the way npm 6 installed (--legacy-peer-deps); that stays on for the
+# rest of this start (autodeps, the app's own npm calls).
+PEER_LOOP_LIMIT="${VNDEL_PEER_LOOP_LIMIT:-40}"
+npm_guarded() {
+    local log pid rc
+    log="$(mktemp)"
+    npm "$@" > >(tee "${log}") 2>&1 &
+    pid=$!
+    while kill -0 "${pid}" 2>/dev/null; do
+        if [ "$(grep -c 'ERESOLVE overriding peer dependency' "${log}" 2>/dev/null)" -gt "${PEER_LOOP_LIMIT}" ]; then
+            kill "${pid}" 2>/dev/null
+            wait "${pid}" 2>/dev/null
+            rm -f "${log}"
+            return 75
+        fi
+        sleep 1
+    done
+    wait "${pid}"
+    rc=$?
+    rm -f "${log}"
+    return "${rc}"
+}
+# npm_do install|uninstall [packages…]
+npm_do() {
+    local rc
+    if on "${npm_config_legacy_peer_deps:-}"; then
+        npm "$1" --no-audit --no-fund "${@:2}"
+        return
+    fi
+    npm_guarded "$1" --no-audit --no-fund "${@:2}"
+    rc=$?
+    if [ "${rc}" = 75 ]; then
+        warn "npm keeps going round conflicting peer dependencies — installing again the way npm 6 did (--legacy-peer-deps)"
+        export npm_config_legacy_peer_deps=true
+        npm "$1" --no-audit --no-fund --loglevel=error "${@:2}"
+        rc=$?
+    fi
+    return "${rc}"
+}
+
 if [ -n "${NODE_PACKAGES:-}" ]; then
     words "${NODE_PACKAGES}"
     say "adding: ${WORDS[*]}"
-    npm install --no-audit --no-fund "${WORDS[@]}" || warn "npm install ${WORDS[*]} failed"
+    npm_do install "${WORDS[@]}" || warn "npm install ${WORDS[*]} failed"
 fi
 if [ -n "${UNNODE_PACKAGES:-}" ]; then
     words "${UNNODE_PACKAGES}"
     say "removing: ${WORDS[*]}"
-    npm uninstall --no-audit --no-fund "${WORDS[@]}" || warn "npm uninstall ${WORDS[*]} failed"
+    npm_do uninstall "${WORDS[@]}" || warn "npm uninstall ${WORDS[*]} failed"
 fi
 
 # package.json's dependencies, with the project's own package manager — only when something changed
@@ -72,7 +114,7 @@ if on "${INSTALL_DEPS:-1}" && [ -f package.json ]; then
         case "${PM}" in
             pnpm) pnpm install ;;
             yarn) yarn install --non-interactive ;;
-            *) npm install --no-audit --no-fund ;;
+            *) npm_do install ;;
         esac || { INSTALLED=0; warn "installing the dependencies failed — see above"; }
     fi
 fi
