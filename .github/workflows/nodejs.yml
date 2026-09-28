@@ -23,8 +23,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: vndel-node / entrypoint tests
-        run: bash tests/nodejs_test.sh
+      - name: vndel-node / entrypoint tests (with the real ts-node + TypeScript 5, as in the image)
+        run: |
+          npm install --prefix /tmp/real --no-audit --no-fund ts-node@10 typescript@5 >/dev/null
+          VNDEL_REAL_GLOBAL=/tmp/real/node_modules bash tests/nodejs_test.sh
       - name: shellcheck
         run: shellcheck --severity=warning nodejs/vndel-node nodejs/entrypoint.sh nodejs/tools.sh tests/nodejs_test.sh
       - name: Dockerfile lint (hadolint)
@@ -116,7 +118,8 @@ jobs:
           printf '%s\n' 'console.log("HEAP-MB", Math.round(require("v8").getHeapStatistics().heap_size_limit / 1048576))' > "$D/index.js"
           OUT="$(run "$D" -e COMMAND=index.js -e SERVER_MEMORY=512 "$IMG")"; echo "$OUT"
           HEAP="$(echo "$OUT" | grep -o 'HEAP-MB [0-9]*' | cut -d' ' -f2)"
-          [ "$HEAP" -ge 380 ] && [ "$HEAP" -le 450 ]
+          # 384 MB for the old generation, plus the young generation (its size differs between Node versions)
+          [ "$HEAP" -ge 380 ] && [ "$HEAP" -le 520 ]
 
           echo "--- Chrome runs as a normal user without passing --no-sandbox (the image adds it)"
           OUT="$(docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp --entrypoint chromium "$IMG" --headless=new --dump-dom 'data:text/html,<p>CHROME-OK</p>' 2>/dev/null)"
