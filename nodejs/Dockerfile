@@ -68,8 +68,11 @@ RUN     apt-get update -y \
 ##      Chromium inside a panel container: no sandbox is possible there and /dev/shm is small — Debian's
 ##      /usr/bin/chromium reads extra flags from /etc/chromium.d, so every app gets them without code changes.
 ##      The usual names apps look for all lead to it. ($CHROMIUM_FLAGS is written literally, for that script.)
+##      Chromium must not inherit the entrypoint's nss_wrapper preload (it hangs on start with it); it does not need
+##      a user name, so it is dropped here — node keeps it.
 # hadolint ignore=SC2016
-RUN     printf '%s\n' 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox --disable-dev-shm-usage --disable-gpu"' > /etc/chromium.d/vndel \
+RUN     printf '%s\n' 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox --disable-dev-shm-usage --disable-gpu"' \
+            'unset LD_PRELOAD NSS_WRAPPER_PASSWD NSS_WRAPPER_GROUP' > /etc/chromium.d/vndel \
         && ln -s /usr/bin/chromium /usr/bin/chromium-browser \
         && ln -s /usr/bin/chromium /usr/bin/google-chrome \
         && ln -s /usr/bin/chromium /usr/bin/google-chrome-stable
