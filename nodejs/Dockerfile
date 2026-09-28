@@ -76,6 +76,10 @@ RUN     printf '%s\n' 'export CHROMIUM_FLAGS="$CHROMIUM_FLAGS --no-sandbox --dis
         && ln -s /usr/bin/chromium /usr/bin/chromium-browser \
         && ln -s /usr/bin/chromium /usr/bin/google-chrome \
         && ln -s /usr/bin/chromium /usr/bin/google-chrome-stable
+##      GCC 14 turned old C mistakes (incompatible pointer types, implicit declarations…) into errors, so older native
+##      modules no longer compile — e.g. @discordjs/opus, which every music bot needs and which has no prebuilt binary
+##      for this glibc. -fpermissive makes them warnings again (C only; C++ uses CXXFLAGS). A customer can override it.
+ENV     CFLAGS=-fpermissive
 ENV     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
         PUPPETEER_SKIP_DOWNLOAD=true \
         PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \

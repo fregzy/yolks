@@ -32,6 +32,7 @@ if [ \"\${PEER_LOOP:-0}\" = 1 ] && [ \"\$1\" = install ] && [ -z \"\${npm_config
     while :; do echo 'npm warn ERESOLVE overriding peer dependency'; sleep 0.02; done
 fi
 if [ \"\${PEER_FEW:-0}\" = 1 ] && [ \"\$1\" = install ]; then for i in 1 2 3 4 5; do echo 'npm warn ERESOLVE overriding peer dependency'; done; fi
+if [ \"\${ENGINE:-0}\" = 1 ] && [ \"\$1\" = install ]; then for p in mongoose@9.10.2 bson@7.3.3; do printf '%s\n' 'npm warn EBADENGINE Unsupported engine {' \"npm warn EBADENGINE   package: '\$p',\" \"npm warn EBADENGINE   required: { node: '>=20.19.0' },\" \"npm warn EBADENGINE   current: { node: 'v18.20.8', npm: '10.8.2' }\" 'npm warn EBADENGINE }'; done; fi
 [ -n \"\${npm_config_legacy_peer_deps:-}\" ] && echo \"${pm} legacy-peer-deps \$*\" >> '${CALLS}'
 [ \"\$1\" = install ] && mkdir -p node_modules
 [ \"\$1\" = start ] && echo NPM-START-RAN
@@ -229,6 +230,16 @@ has "…the app starts" "APP-RAN"
 files index.js "${APP}"
 run COMMAND=index.js NODE_PACKAGES='react-dom' PEER_LOOP=1
 called "NODE_PACKAGES that loop: installed again with legacy peer deps" "npm legacy-peer-deps install --no-audit --no-fund --loglevel=error react-dom"
+
+echo "packages that need a newer Node"
+files package.json '{"dependencies":{"mongoose":"*"}}' index.js "${APP}"
+run COMMAND=index.js ENGINE=1
+has "one clear line names them and what to do" "need a newer Node.js than"
+has "…with each package and the Node it needs" "bson@7.3.3 (Node >=20.19.0), mongoose@9.10.2 (Node >=20.19.0)"
+has "…pointing at the Docker Image setting" "Startup → Docker Image"
+files package.json '{"dependencies":{"ms":"*"}}' index.js "${APP}"
+run COMMAND=index.js
+hasnt "no such packages: no such line" "need a newer Node.js"
 
 echo "git"
 files index.js "${APP}"

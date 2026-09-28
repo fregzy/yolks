@@ -66,8 +66,16 @@ npm_guarded() {
     done
     wait "${pid}"
     rc=$?
+    engine_hint "${log}"
     rm -f "${log}"
     return "${rc}"
+}
+# packages that need a newer Node than this image: one clear line instead of npm's EBADENGINE blocks
+engine_hint() {
+    local need
+    need="$(awk -F"'" '/EBADENGINE +package:/ {p=$2} /EBADENGINE +required:/ && /node:/ {print p " (Node " $2 ")"}' "$1" 2>/dev/null | sort -u | head -n 6 | paste -sd, - | sed 's/,/, /g')"
+    [ -n "${need}" ] && warn "Some packages need a newer Node.js than $(node -v 2>/dev/null): ${need} — choose a newer Node.js in Startup → Docker Image."
+    return 0
 }
 # npm_do install|uninstall [packages…]
 npm_do() {
