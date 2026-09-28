@@ -86,9 +86,10 @@ COPY    ./entrypoint.sh /entrypoint.sh
 RUN     chmod 755 /usr/local/bin/vndel-node /entrypoint.sh \
         && printf '#!/bin/sh\nexec node /usr/local/lib/vndel/autodeps.js "$@"\n' > /usr/local/bin/autodeps \
         && chmod 755 /usr/local/bin/autodeps \
-        && useradd -m -d /home/container -s /bin/bash container
+        && useradd -m -u 1000 -d /home/container -s /bin/bash container
 
-USER    container
+##      By number (the panel's Wings runs the container with its own uid anyway)
+USER    1000:1000
 ENV     USER=container HOME=/home/container NODE_MAJOR=${NODE_MAJOR}
 WORKDIR /home/container
 
