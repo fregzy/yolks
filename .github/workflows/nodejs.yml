@@ -158,6 +158,16 @@ jobs:
             echo "::warning::Node ${V}: compiling a native module from source failed (old node-gyp) — prebuilt modules still work"
           fi
 
+          if [ "$V" -ge 16 ]; then
+            echo "--- @discordjs/opus (music bots): no prebuilt binary for this glibc, so it is compiled — GCC 14 needs -fpermissive"
+            D="$(new)"
+            printf '%s\n' '{"dependencies":{"@discordjs/opus":"latest"}}' > "$D/package.json"
+            printf '%s\n' 'const { OpusEncoder } = require("@discordjs/opus"); const e = new OpusEncoder(48000, 2); console.log("OPUS-OK", e.encode(Buffer.alloc(3840)).length > 0)' > "$D/index.js"
+            # compiled from source on purpose (a prebuilt binary, when one exists, would not test the compiler)
+            OUT="$(run "$D" -e COMMAND=index.js -e npm_config_build_from_source=true "$IMG" 2>&1 || true)"; echo "$OUT" | tail -5
+            echo "$OUT" | grep -q "OPUS-OK true"
+          fi
+
           echo "--- the panel's stop (Ctrl+C = SIGINT) reaches node"
           D="$(new)"
           printf '%s\n' 'process.on("SIGINT", () => { console.log("GOT-SIGINT"); process.exit(0); }); console.log("RUNNING"); setInterval(() => {}, 1000)' > "$D/index.js"
