@@ -112,6 +112,15 @@ jobs:
             echo "$OUT" | grep -q "ESM/OK"
           fi
 
+          echo "--- the app needs another Node.js: one line for the panel's window, and the details file"
+          D="$(new)"
+          printf '%s\n' '{"engines":{"node":">=99"}}' > "$D/package.json"
+          printf '%s\n' 'console.log("STILL-STARTS")' > "$D/index.js"
+          OUT="$(run "$D" -e COMMAND=index.js -e INSTALL_DEPS=0 "$IMG")"; echo "$OUT"
+          echo "$OUT" | grep -q "\[vndel\] Node.js version: this server runs Node.js ${V}, but package.json needs >=99"
+          echo "$OUT" | grep -q "STILL-STARTS"
+          grep -q '"needs"' "$D/.vndel/node-version.json"
+
           echo "--- autodeps: code that requires a package with no package.json"
           D="$(new)"
           printf '%s\n' 'console.log("AUTO-OK", require("ms")(2000))' > "$D/index.js"
