@@ -133,6 +133,11 @@ fi
 # remembered after autodeps (it may add to package.json), so the next start skips the install
 if [ "${INSTALLED}" = 1 ] && [ -f package.json ] && [ -d node_modules ]; then fingerprint >"${STAMP}" 2>/dev/null || true; fi
 
+# does this Node.js suit the app (package.json engines, .nvmrc, its packages)? If not: one line naming the version to
+# choose — the panel's "Node.js version" window opens on it
+NODE_CHECK="${VNDEL_NODE_CHECK:-/usr/local/lib/vndel/node-check.js}"
+[ -f "${NODE_CHECK}" ] && { node "${NODE_CHECK}" || true; }
+
 # ── 3 · the environment ───────────────────────────────────────────────────────────────────────────
 if on "${NODE_MEMORY_AUTO:-1}" && [[ "${SERVER_MEMORY:-0}" =~ ^[0-9]+$ ]] && [ "${SERVER_MEMORY:-0}" -ge 128 ] \
     && [[ "${NODE_OPTIONS:-}" != *max-old-space-size* ]] && [[ "${NODE_ARGS:-}" != *max-old-space-size* ]]; then

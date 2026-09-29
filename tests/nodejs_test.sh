@@ -241,6 +241,56 @@ files package.json '{"dependencies":{"ms":"*"}}' index.js "${APP}"
 run COMMAND=index.js
 hasnt "no such packages: no such line" "need a newer Node.js"
 
+echo "which Node.js the app needs (node-check.js, with npm's real semver)"
+NODE_DIR_REAL="$(dirname "${REAL_NODE}")"
+SEMVER=""
+for s in "${NODE_DIR_REAL}/node_modules/npm/node_modules/semver" "${NODE_DIR_REAL}/../lib/node_modules/npm/node_modules/semver"; do [ -d "$s" ] && SEMVER="$s" && break; done
+if [ -n "${SEMVER}" ]; then
+    command -v cygpath >/dev/null 2>&1 && SEMVER="$(cygpath -m "${SEMVER}")"
+    CHECK="${ROOT}/nodejs/node-check.js"
+    CUR="$("${REAL_NODE}" -p 'process.versions.node.split(".")[0]')"
+    UP=$((CUR + 2)); ODD=$((CUR + 1))
+    nrun() { run VNDEL_NODE_CHECK="${CHECK}" VNDEL_SEMVER="${SEMVER}" INSTALL_DEPS=0 "$@"; }
+    files package.json "{\"engines\":{\"node\":\">=${UP}.0.0\"}}" index.js "${APP}"
+    nrun COMMAND=index.js
+    has "package.json engines not met: one line that says so" "[vndel] Node.js version: this server runs Node.js ${CUR}, but package.json needs >=${UP}.0.0."
+    has "…and names the Node.js to choose" "Recommended: Node.js ${UP} — choose it in Startup → Docker Image."
+    has "…the app still starts (the line only informs)" "APP-RAN"
+    case "${OUT}" in *$'\e[1;33m[vndel] Node.js version:'*) ok "…the panel's text is one piece, no colour code inside it" ;; *) bad "the line has a colour code inside" "${OUT}" ;; esac
+    STATE="$(cat "${SRV}/.vndel/node-version.json" 2>/dev/null)"
+    case "${STATE}" in *"\"recommended\": ${UP}"*"\"source\": \"package.json\""*) ok "…and the details are written for the panel's window (.vndel/node-version.json)" ;; *) bad "state file" "${STATE}" ;; esac
+
+    files package.json '{"dependencies":{"mongoose":"*"}}' node_modules/mongoose/package.json "{\"version\":\"9.10.2\",\"engines\":{\"node\":\">=${ODD}.19.0\"}}" index.js "${APP}"
+    nrun COMMAND=index.js
+    has "a package that needs a newer Node.js is named, with its version" "mongoose@9.10.2 needs >=${ODD}.19.0"
+    has "…the recommendation is the next long-term-support version that fits" "Recommended: Node.js ${UP} "
+
+    files .nvmrc "v${UP}.3.1" index.js "${APP}"
+    nrun COMMAND=index.js
+    has ".nvmrc is read (\"v${UP}.3.1\" means Node.js ${UP})" ".nvmrc needs ${UP}.x"
+
+    files package.json "{\"engines\":{\"node\":\">=${CUR}.0.0\"},\"dependencies\":{\"ms\":\"*\"}}" node_modules/ms/package.json '{"version":"2.1.3","engines":{"node":">=6"}}' index.js "${APP}"
+    mkdir -p "${SRV}/.vndel" && echo '{}' > "${SRV}/.vndel/node-version.json"
+    nrun COMMAND=index.js
+    hasnt "everything satisfied: no line" "Node.js version:"
+    [ ! -f "${SRV}/.vndel/node-version.json" ] && ok "…and an old details file is removed (the window has nothing to offer)" || bad "stale state file kept"
+
+    files package.json '{"engines":{"node":"<12"}}' index.js "${APP}"
+    nrun COMMAND=index.js
+    has "no Node.js offered here fits: says so instead of recommending" "No Node.js version offered here satisfies all of them."
+    if [ "${CUR}" -gt 12 ]; then
+        files package.json "{\"engines\":{\"node\":\"<${CUR}\"}}" index.js "${APP}"
+        nrun COMMAND=index.js
+        has "an app that caps its Node.js: the newest version below the cap is recommended" "Recommended: Node.js $((CUR - 1)) "
+    fi
+    files package.json '{"engines":{"node":"not a range"}}' index.js "${APP}"
+    nrun COMMAND=index.js
+    hasnt "a range npm cannot read is ignored (no false alarm)" "Node.js version:"
+    has "…the app starts" "APP-RAN"
+else
+    echo "  (skipped: npm's semver not found next to ${REAL_NODE})"
+fi
+
 echo "git"
 files index.js "${APP}"
 mkdir -p "${SRV}/.git"

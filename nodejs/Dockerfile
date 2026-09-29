@@ -90,7 +90,7 @@ COPY    --from=node /opt/node/ /usr/local/
 COPY    ./tools.sh /tmp/tools.sh
 RUN     bash /tmp/tools.sh && rm -f /tmp/tools.sh
 
-COPY    ./autodeps.js /usr/local/lib/vndel/autodeps.js
+COPY    ./autodeps.js ./node-check.js /usr/local/lib/vndel/
 COPY    ./vndel-node /usr/local/bin/vndel-node
 COPY    ./entrypoint.sh /entrypoint.sh
 RUN     chmod 755 /usr/local/bin/vndel-node /entrypoint.sh \
