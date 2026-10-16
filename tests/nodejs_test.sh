@@ -307,26 +307,52 @@ not_called "not a git folder: no pull" "git"
 
 echo "memory"
 files index.js "${APP}"
-run COMMAND=index.js SERVER_MEMORY=1024
+run NODE_IPV4_FIRST=0 COMMAND=index.js SERVER_MEMORY=1024
 # Node 12 does not accept --max-semi-space-size in NODE_OPTIONS (it would not even start): then it is left out
 if NODE_OPTIONS="--max-semi-space-size=16" "${REAL_NODE}" -e 0 >/dev/null 2>&1; then SEMI=' --max-semi-space-size=16'; else SEMI=''; fi
 has "1024 MB server: node's heap limited to 768 MB, young generation to 16 MB semi-spaces where node allows it (Node 24+ would add 192 MB)" "opts=--max-old-space-size=768${SEMI} "
 has "…and the app runs with it" "APP-RAN"
-run COMMAND=index.js SERVER_MEMORY=1024 NODE_OPTIONS='--trace-warnings'
+run NODE_IPV4_FIRST=0 COMMAND=index.js SERVER_MEMORY=1024 NODE_OPTIONS='--trace-warnings'
 has "existing NODE_OPTIONS are kept" "opts=--trace-warnings --max-old-space-size=768${SEMI} "
-run COMMAND=index.js SERVER_MEMORY=4096
+run NODE_IPV4_FIRST=0 COMMAND=index.js SERVER_MEMORY=4096
 has "a big server (over 2 GB): only the old generation is limited" "opts=--max-old-space-size=3072 "
 hasnt "…its young generation is left to Node" "max-semi-space-size"
 if [ -n "${SEMI}" ]; then
-    run COMMAND=index.js SERVER_MEMORY=1024 NODE_OPTIONS='--max-semi-space-size=64'
+    run NODE_IPV4_FIRST=0 COMMAND=index.js SERVER_MEMORY=1024 NODE_OPTIONS='--max-semi-space-size=64'
     has "a semi-space size the customer set wins" "opts=--max-semi-space-size=64 --max-old-space-size=768 "
 fi
-run COMMAND=index.js SERVER_MEMORY=1024 NODE_OPTIONS='--max-old-space-size=300'
+run NODE_IPV4_FIRST=0 COMMAND=index.js SERVER_MEMORY=1024 NODE_OPTIONS='--max-old-space-size=300'
 has "a limit the customer set wins" "opts=--max-old-space-size=300 "
-run COMMAND=index.js SERVER_MEMORY=0
+run NODE_IPV4_FIRST=0 COMMAND=index.js SERVER_MEMORY=0
 hasnt "unlimited server (0): no limit" "max-old-space-size"
-run COMMAND=index.js SERVER_MEMORY=1024 NODE_MEMORY_AUTO=0
+run NODE_IPV4_FIRST=0 COMMAND=index.js SERVER_MEMORY=1024 NODE_MEMORY_AUTO=0
 hasnt "NODE_MEMORY_AUTO=0: no limit" "max-old-space-size"
+
+echo "network: IPv4 first"
+# Node 12 and old 14 do not accept the flag in NODE_OPTIONS: then it is left out (like the semi-space size above)
+if NODE_OPTIONS="--dns-result-order=ipv4first" "${REAL_NODE}" -e 0 >/dev/null 2>&1; then V4=1; else V4=0; fi
+run COMMAND=index.js SERVER_MEMORY=0
+if [ "${V4}" = 1 ]; then
+    has "by default, connections go out over IPv4 first (random timeouts to Discord on Node 18 without it)" "opts=--dns-result-order=ipv4first "
+    has "…and the app runs with it" "APP-RAN"
+    run COMMAND=index.js SERVER_MEMORY=1024
+    has "…next to the memory limits" "--max-old-space-size=768"
+    has "…in the same NODE_OPTIONS" "--dns-result-order=ipv4first"
+    run COMMAND=index.js SERVER_MEMORY=0 NODE_OPTIONS='--trace-warnings'
+    has "existing NODE_OPTIONS are kept" "opts=--trace-warnings --dns-result-order=ipv4first "
+    run COMMAND=index.js SERVER_MEMORY=0 NODE_OPTIONS='--dns-result-order=verbatim'
+    has "an order the customer set wins" "opts=--dns-result-order=verbatim "
+    hasnt "…and is not doubled" "ipv4first"
+    run COMMAND=index.js SERVER_MEMORY=0 NODE_ARGS='--dns-result-order=verbatim'
+    hasnt "an order set in Node options (NODE_ARGS) wins too" "opts=--dns-result-order=ipv4first"
+    run COMMAND=index.js SERVER_MEMORY=0 NODE_IPV4_FIRST=0
+    hasnt "NODE_IPV4_FIRST=0: left alone" "dns-result-order"
+    run COMMAND=index.js SERVER_MEMORY=0 NODE_IPV4_FIRST=false
+    hasnt "…false too" "dns-result-order"
+else
+    hasnt "this node does not accept the flag: it is left out and the app still starts" "dns-result-order"
+    has "…(the app ran)" "APP-RAN"
+fi
 
 echo "entrypoint"
 stub vndel-node 'echo VNDEL-NODE-RAN'

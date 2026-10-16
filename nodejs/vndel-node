@@ -150,6 +150,15 @@ if on "${NODE_MEMORY_AUTO:-1}" && [[ "${SERVER_MEMORY:-0}" =~ ^[0-9]+$ ]] && [ "
         export NODE_OPTIONS="${NODE_OPTIONS} --max-semi-space-size=16"
     fi
 fi
+# Connections go out over IPv4 first (NODE_IPV4_FIRST=0 to turn off). A container usually has no IPv6 route, but DNS still
+# returns IPv6 addresses (AAAA): Node 17-19 tries them first and waits for each to time out before it falls back to IPv4,
+# which shows up as random "ConnectTimeoutError" / "ETIMEDOUT" to Discord, databases and APIs. Node 20+ already races
+# both families, so this only matters on older ones. Only where node accepts the flag in NODE_OPTIONS (Node 12 and 14
+# before 14.18 would not even start); a customer who set it themselves wins.
+if on "${NODE_IPV4_FIRST:-1}" && [[ "${NODE_OPTIONS:-}" != *dns-result-order* ]] && [[ "${NODE_ARGS:-}" != *dns-result-order* ]] \
+    && NODE_OPTIONS="--dns-result-order=ipv4first" node -e 0 >/dev/null 2>&1; then
+    export NODE_OPTIONS="${NODE_OPTIONS:+${NODE_OPTIONS} }--dns-result-order=ipv4first"
+fi
 on "${TS_TYPECHECK:-0}" || export TS_NODE_TRANSPILE_ONLY=true
 
 # ── 4 · run ───────────────────────────────────────────────────────────────────────────────────────

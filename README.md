@@ -12,12 +12,13 @@ Node.js release keys at build time. Rebuilt every Monday (Node security releases
 | Included | |
 |---|---|
 | Run | `vndel-node`: a `.js` / `.mjs` / `.cjs` file with node, a `.ts` file with **ts-node** (or **tsx**), any command (`npm run start`), or — with nothing set — package.json's `start` script / `main` / `index.js`, `index.ts`, `src/index.ts`, … |
-| Packages | **npm**, **yarn**, **pnpm** (the lock file decides); installed on start only when package.json or the lock file changed; **autodeps** installs what the code `require`s / `import`s even without a package.json |
+| Packages | **npm**, **yarn**, **pnpm** (the lock file decides); installed on start only when package.json or the lock file changed; **autodeps** installs what the code `require`s / `import`s for code uploaded without a package.json (a project whose package.json lists its dependencies is left to npm); npm going round in circles on peer dependencies is stopped and redone with `--legacy-peer-deps`; packages that need a newer Node are named in one line |
 | TypeScript | TypeScript 5, ts-node 10 (type errors do not stop the app unless `TS_TYPECHECK=1`), tsx (Node 16+; used by itself for ES-module projects) |
 | Chrome | Chromium with Arabic, emoji and Latin fonts. `PUPPETEER_EXECUTABLE_PATH` is set and `--no-sandbox --disable-dev-shm-usage` are added for every app, so puppeteer / whatsapp-web.js work without code changes; `google-chrome`, `google-chrome-stable`, `chromium-browser` all lead to it |
 | Native modules | python3, make, g++ (node-gyp: bcrypt, sqlite3, …), cairo / pango / jpeg / gif / svg headers (canvas) |
 | Also | ffmpeg, git, openssh-client, curl, wget, jq, sqlite3, zip / unzip, tzdata |
 | Memory | node's heap is limited to 75% of the server's memory (it is not killed for running out; `NODE_MEMORY_AUTO=0` to turn off) |
+| Network | connections go out over **IPv4 first** (`--dns-result-order=ipv4first`), where the Node version accepts it. Without it Node 17–19 can wait on IPv6 addresses the container cannot reach and time out toward Discord, databases and APIs. A flag the customer sets in `NODE_OPTIONS` or Node options wins; `NODE_IPV4_FIRST=0` turns it off |
 | Stop | tini passes the panel's Ctrl+C to node, so apps can save and close cleanly |
 
 Egg: `eggs/egg-vndel-nodejs.json` (build it with `php eggs/vndel-nodejs/build.php <github-user>`). Its startup is
